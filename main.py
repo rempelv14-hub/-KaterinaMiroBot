@@ -21,7 +21,7 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 ADMIN_ID_RAW = os.getenv("ADMIN_ID", "").strip()
-START_PHOTO = os.getenv("START_PHOTO", "images/start.jpg").strip() or "images/start.jpg"
+START_PHOTO = os.getenv("START_PHOTO", "start.jpg").strip() or "start.jpg"
 SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "").strip()
 PROTECT_CONTENT = os.getenv("PROTECT_CONTENT", "true").lower() in {"1", "true", "yes", "on"}
 DB_PATH = os.getenv("DB_PATH", "katya_bot.db").strip()
@@ -282,9 +282,9 @@ https://t.me/+R8s3vQ_Mcms0NmJi
 
 
 DOCUMENTS = {
-    "cosmetics_suppliers": "documents/cosmetics.pdf",
-    "brand_suppliers_rf": "documents/russia_suppliers.pdf",
-    "factories_europe": "documents/europe_factories.pdf",
+    "cosmetics_suppliers": "cosmetics.pdf",
+    "brand_suppliers_rf": "russia_suppliers.pdf",
+    "factories_europe": "europe_factories.pdf",
 }
 
 
@@ -586,7 +586,7 @@ async def send_pdf(callback: CallbackQuery, state: FSMContext):
 
     path = Path(pdf_path)
     if not path.exists():
-        await callback.message.answer("PDF-файл не найден. Проверь папку documents в проекте.")
+        await callback.message.answer("PDF-файл не найден. Проверь, что PDF загружен рядом с main.py.")
         await callback.answer()
         return
 
