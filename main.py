@@ -452,9 +452,20 @@ def payment_text(section_key: str) -> str:
         f"<b>Сумма:</b> {html.escape(tariff['price'])}\n\n"
         f"<b>Банк:</b> {html.escape(PAYMENT_BANK)}\n"
         f"<b>Карта:</b> <code>{html.escape(PAYMENT_CARD)}</code>\n\n"
-        "После оплаты отправьте сюда чек одним сообщением: фото, файл или текст.\n"
-        "Катерина проверит оплату и бот выдаст доступ."
+        "1. Переведите сумму на карту.\n"
+        "2. После оплаты нажмите кнопку «📎 Я оплатил(а), отправить чек».\n"
+        "3. Отправьте чек или скриншот перевода одним сообщением.\n\n"
+        "После проверки оплаты Катерина подтвердит доступ, и бот автоматически выдаст материал."
     )
+
+
+def payment_keyboard(section_key: str):
+    kb = InlineKeyboardBuilder()
+    kb.button(text="💳 Реквизиты для оплаты", callback_data=f"pay_info:{section_key}")
+    kb.button(text="📎 Я оплатил(а), отправить чек", callback_data=f"receipt:{section_key}")
+    kb.button(text="⬅️ К тарифам", callback_data="section:tariffs")
+    kb.adjust(1)
+    return kb.as_markup()
 
 
 def payment_admin_keyboard(user_id: int, section_key: str):
@@ -472,7 +483,7 @@ def main_keyboard():
     kb.button(text="Фабрики Европы", callback_data="section:factories_europe")
     kb.button(text="Запуск магазина под ключ", callback_data="section:shop_turnkey")
     kb.button(text="💰 Тарифы", callback_data="section:tariffs")
-    kb.button(text="📩 По всем вопросам — к Катерине", callback_data="ask_question")
+    kb.button(text="💬 Связь со мной", callback_data="ask_question")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -480,7 +491,6 @@ def main_keyboard():
 def back_keyboard():
     kb = InlineKeyboardBuilder()
     kb.button(text="⬅️ Назад в меню", callback_data="back_to_menu")
-    kb.button(text="📩 По всем вопросам — к Катерине", callback_data="ask_question")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -492,7 +502,6 @@ def tariffs_keyboard():
     kb.button(text="Купить: фабрики Европы — 29 900 ₽", callback_data="pay:factories_europe")
     kb.button(text="Купить: сопровождение — 95 000 ₽", callback_data="pay:shop_turnkey")
     kb.button(text="⬅️ Назад в меню", callback_data="back_to_menu")
-    kb.button(text="📩 По всем вопросам — к Катерине", callback_data="ask_question")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -509,7 +518,6 @@ def section_keyboard(section_key: str, user_id: int | None = None):
         kb.button(text="💳 Оплатить / записаться", callback_data=f"pay:{section_key}")
 
     kb.button(text="⬅️ Назад в меню", callback_data="back_to_menu")
-    kb.button(text="📩 По всем вопросам — к Катерине", callback_data="ask_question")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -604,12 +612,10 @@ async def start_payment_flow(callback: CallbackQuery, state: FSMContext, section
         await callback.answer()
         return
 
-    await state.set_state(PaymentState.waiting_for_receipt)
-    await state.update_data(section_key=section_key)
-
+    await state.clear()
     await callback.message.answer(
         payment_text(section_key),
-        reply_markup=back_keyboard(),
+        reply_markup=payment_keyboard(section_key),
         protect_content=PROTECT_CONTENT,
     )
     await callback.answer()
@@ -619,6 +625,44 @@ async def start_payment_flow(callback: CallbackQuery, state: FSMContext, section
 async def start_payment(callback: CallbackQuery, state: FSMContext):
     section_key = callback.data.split(":", 1)[1]
     await start_payment_flow(callback, state, section_key)
+
+
+@router.callback_query(F.data.startswith("pay_info:"))
+async def show_payment_requisites(callback: CallbackQuery):
+    section_key = callback.data.split(":", 1)[1]
+    tariff = TARIFFS.get(section_key)
+
+    if not tariff:
+        await callback.answer("Тариф не найден", show_alert=True)
+        return
+
+    await callback.answer(
+        f"Банк: {PAYMENT_BANK}\nКарта: {PAYMENT_CARD}\nСумма: {tariff['price']}",
+        show_alert=True,
+    )
+
+
+@router.callback_query(F.data.startswith("receipt:"))
+async def ask_for_payment_receipt(callback: CallbackQuery, state: FSMContext):
+    section_key = callback.data.split(":", 1)[1]
+    tariff = TARIFFS.get(section_key)
+
+    if not tariff:
+        await callback.answer("Тариф не найден", show_alert=True)
+        return
+
+    await state.set_state(PaymentState.waiting_for_receipt)
+    await state.update_data(section_key=section_key)
+
+    await callback.message.answer(
+        "📎 Отправьте чек или скриншот перевода одним сообщением.\n\n"
+        f"Тариф: <b>{html.escape(tariff['title'])}</b>\n"
+        f"Сумма: <b>{html.escape(tariff['price'])}</b>\n\n"
+        "После проверки Катерина нажмёт подтверждение, и бот автоматически выдаст доступ.",
+        reply_markup=payment_keyboard(section_key),
+        protect_content=PROTECT_CONTENT,
+    )
+    await callback.answer()
 
 
 @router.message(PaymentState.waiting_for_receipt)
@@ -642,7 +686,7 @@ async def receive_payment_receipt(message: Message, state: FSMContext):
     save_payment_request(message, section_key, receipt_text)
 
     await message.answer(
-        "Чек отправлен Катерине на проверку ✅\nПосле подтверждения бот выдаст доступ.",
+        "Чек отправлен Катерине на проверку ✅\nПосле подтверждения бот автоматически выдаст доступ.",
         reply_markup=main_keyboard(),
         protect_content=PROTECT_CONTENT,
     )
